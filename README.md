@@ -1,77 +1,174 @@
-# Drishti — Real-Data MPLADS Oversight & Early-Warning System (SIH26102)
+# Drishti — AI-Powered MPLADS Monitoring & Audit Prioritisation
 
-Government decision-support over **real** MPLADS data. It ranks works for human
-review with explainable evidence and forecasts delivery risk. **Real Data Mode is
-the default; there is no synthetic fallback in real mode** — with nothing connected,
-the app shows an empty state and an import screen, not fake numbers.
+An explainable, data-driven decision-support system that helps prioritise public infrastructure projects for human review by identifying cost anomalies, delivery risks, duplicate records, and unusual spending concentrations.
 
-## What is real vs what needs access
-| Capability | Status |
+Drishti is designed to work with real MPLADS records. It processes imported datasets, generates evidence-backed risk indicators, and presents findings through an API-driven dashboard. It does not fabricate records or treat risk indicators as proof of fraud.
+
+## Overview
+
+Public infrastructure monitoring involves large volumes of project and expenditure data. Reviewing every record manually can be time-consuming.
+
+Drishti helps make this process more focused by:
+
+- Identifying projects with unusual expected costs.
+- Highlighting potential delivery delays and stalled works.
+- Detecting potentially duplicated project records.
+- Analysing spending concentration across agencies.
+- Maintaining data provenance and officer-review history.
+- Providing explainable signals to support human decision-making.
+
+## Key Features
+
+- **Real-data processing:** Import CSV and JSON datasets with automatic column mapping and validation.
+- **Cost anomaly detection:** Compare project costs against expected costs based on available project characteristics.
+- **Delivery-risk analysis:** Estimate delivery risk when sufficient labelled historical data is available.
+- **Duplicate detection:** Identify potentially duplicated records using multiple corroborating attributes.
+- **Spending concentration analysis:** Compare agency-level spending patterns against broader trends.
+- **Data quality reporting:** Identify missing, invalid, or inconsistent source data.
+- **Review history:** Preserve record provenance and officer-review decisions.
+- **Interactive dashboard:** Explore analytical results through a React frontend connected to a REST API.
+
+## Tech Stack
+
+| Layer | Technologies |
 |---|---|
-| CSV / JSON official-export import (auto column-mapping, validation, DQ report) | **Implemented & tested** |
-| Real analytics engine (expected-cost, delivery-risk, duplicates, concentration) on imported data | **Implemented & tested** |
-| PostgreSQL/SQLite persistence, provenance, officer-review history | **Implemented & tested** |
-| REST API (FastAPI) + API-driven React UI (empty/loading/error states) | **Implemented** |
-| **data.gov.in** Open Data API connector | **Implemented** — needs a free `DATAGOVIN_API_KEY` + a MPLADS resource id |
-| **Live e-SAKSHI API** pull | **NOT available** — no public e-SAKSHI API was verifiable; use official export/import (the connector says so honestly and never fakes an endpoint) |
-| Real accuracy numbers | **Pending real data** — all model metrics are computed on whatever you import; on the shipped test fixture they are honest but weak |
+| Frontend | React, Vite, JavaScript |
+| Backend | Python, FastAPI |
+| Data processing | Pandas, CSV/JSON validation |
+| Machine learning | Regression, logistic classification, anomaly scoring |
+| Database | SQLite, PostgreSQL |
+| API | REST |
+| Deployment | Docker, Docker Compose |
+| Testing | Pytest |
 
-## Architecture
-`React UI  →  FastAPI  →  service  →  connectors → mapping → validation → engine → DB`
-The frontend holds no business logic; it renders whatever the API returns.
+## System Architecture
 
-## Quick start (SQLite, zero setup)
+```text
+Official Data Sources
+        |
+        v
+ CSV / JSON Import
+        |
+        v
+ Column Mapping & Validation
+        |
+        v
+ Data Quality Reporting
+        |
+        v
+ Analytics & Risk Engine
+        |
+        v
+ Database + Provenance
+        |
+        v
+ FastAPI REST API
+        |
+        v
+ React Dashboard
+        |
+        v
+ Human Review & Prioritisation
 ```
+
+## Analytics Approach
+
+### Cost Anomaly Detection
+Estimates expected project costs using available project attributes such as project type, district, year, and size. Unusual residuals are flagged for further investigation.
+
+### Delivery-Risk Estimation
+Uses historical project outcomes and pre-outcome features to estimate delivery risk. The model remains unavailable when there is insufficient labelled history rather than reporting unsupported performance metrics.
+
+### Duplicate Record Detection
+Combines evidence such as project descriptions, agencies, amounts, and dates to identify records that may refer to the same work.
+
+### Spending Concentration
+Examines agency-level spending shares relative to their broader spending patterns to highlight unusual concentrations.
+
+**Important:** These outputs are investigation priorities, not fraud verdicts. Final decisions require human review and verification.
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.10 or a compatible version supported by the dependencies
+- Node.js and npm
+- Git
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/megha-10-04/drishti-mplads.git
+cd drishti-mplads
+```
+
+### 2. Start the backend
+
+```bash
 cd backend
 pip install -r requirements.txt
-uvicorn app:app --reload            # API at http://localhost:8000  (creates drishti.db)
-cd ../frontend
-npm install && npm run dev          # UI at http://localhost:5173
-```
-Open the UI → **Data Sources** → import an official export (or the test fixture
-`backend/tests/fixtures/esakshi_sample.csv`). The dashboard then populates from real records.
-
-## Production (PostgreSQL via Docker)
-```
-cp .env.example .env         # set DATAGOVIN_API_KEY if using the API connector
-docker compose up --build    # db + api (8000) + web (8080)
+uvicorn app:app --reload
 ```
 
-## Connecting real MPLADS data
-1. **Official export (guaranteed):** download a work-level export from e-SAKSHI, import via UI or
-   `POST /imports/file`. Columns are auto-mapped; a data-quality report is returned.
-2. **data.gov.in API (real):** get a free key at data.gov.in, find a MPLADS resource id, then
-   `POST /imports/datagovin {"resource_id": "...", "api_key": "..."}`.
-3. **e-SAKSHI API:** not verified/public. If MoSPI documents one, configure
-   `ESAKSHI_API_BASE`/`ESAKSHI_API_TOKEN` and implement `connectors/esakshi.py::fetch`.
+The API should be available at `http://localhost:8000`.
 
-## Machine-learning honesty
-- **Expected-cost:** regression of log(cost) on type × district × year × size; anomaly = cross-validated
-  standardised residual (z ≥ 2.5). If size/quantity is absent, confidence is **reduced** and flagged.
-  Reported R² is out-of-fold fit quality — **not** detection accuracy.
-- **Delivery-risk:** logistic model on pre-outcome features only (leakage-guarded), trained on
-  completed-vs-stalled history, temporal split when possible. If labelled history is insufficient
-  (**< 30 each**), the model is **unavailable** and **no AUC is fabricated**.
-- **Duplicates:** require corroboration (text + agency + amount + dates), not text alone.
-- **Concentration:** an agency's local share vs its own statewide norm.
-- Output is **investigation priority**, never a fraud verdict; a human decides and the decision is stored.
+### 3. Start the frontend
 
-## Acceptance-criteria checklist
-- [x] No hardcoded analysis data in real mode — engine runs on imported DataFrame (`tests/test_pipeline.py`)
-- [x] Import a CSV/JSON → auto-map → validate → data-quality report (`/imports/file`, `validation.py`)
-- [x] Engine computes signals from real records; flagged IDs ⊆ source IDs (test asserts this)
-- [x] Delivery-risk uses real labels *when sufficient*, else declines honestly (guard tested)
-- [x] PostgreSQL/SQLite persistence + provenance + officer-review history (`db.py`, `/reviews`)
-- [x] Frontend calls the API; empty/loading/error states; no embedded data (`DrishtiApp.jsx`)
-- [x] e-SAKSHI reality documented honestly; data.gov.in connector real (`connectors/`)
-- [ ] Real e-SAKSHI numbers — requires you to import an actual export (path is ready)
+Open a second terminal:
 
-## Tests
-```
-cd backend && python -m pytest tests/ -q
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-## Known limitations
-Live e-SAKSHI pull unavailable; RBAC is a design (role selector is a view filter, not enforced auth);
-map view needs coordinates in the source; date parsing assumes ISO/`dayfirst` and may need per-export
-configuration; model quality depends entirely on the real data you connect.
+Open the local URL printed by Vite, usually `http://localhost:5173`.
+
+### 4. Import data
+
+Open the dashboard and navigate to the data-import section. Import a compatible CSV or JSON dataset to populate the analytics.
+
+A sample fixture is available at:
+
+`backend/tests/fixtures/esakshi_sample.csv`
+
+The sample fixture is intended for testing, not as evidence of real-world model performance.
+
+## Connecting Data Sources
+
+Drishti supports importing official exports and includes a connector for the data.gov.in API, which requires a valid API key and the appropriate resource ID.
+
+A live e-SAKSHI API integration has not been verified. Official exports can be imported instead.
+
+For configuration details, see `.env.example` and the backend connector modules.
+
+## Testing
+
+Run the backend tests:
+
+```bash
+cd backend
+python -m pytest tests/ -q
+```
+
+## Current Limitations
+
+- Model quality depends on the completeness and reliability of the imported data.
+- Reliable delivery-risk estimation requires sufficient labelled historical records.
+- Live e-SAKSHI API access is not currently verified.
+- Map-based analysis requires geographic coordinates in the source data.
+- Role-based access control requires production-grade authentication and authorisation before deployment in a real operational environment.
+
+## Responsible Use
+
+Drishti is a decision-support tool. Its outputs are designed to help reviewers prioritise records for investigation, not to automatically establish misconduct or fraud. Data quality, explainability, provenance, and human oversight are central to its intended use.
+
+## Author
+
+**Megha Kakkar**
+
+GitHub: [@megha-10-04](https://github.com/megha-10-04)
+
+---
+
+*Built to make public infrastructure monitoring more transparent, explainable, and data-driven.*
